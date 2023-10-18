@@ -12,7 +12,7 @@ class UserInterface():
         pass
 
     def get_arrival(self, inputs):
-        '''
+        '''Retrieve arrival time given current inputs. 
         Expecting inputs to currently be of the form [route, departure, destination, current time, ...]
         
         Note: Yet to think about how to encode departure and destination - thinking data will probably have a stop number, etc
@@ -28,5 +28,7 @@ class UserInterface():
         # Return output in specfic format
 
         ##### yet to complete 
+    
+    
 
         
