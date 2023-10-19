@@ -5,12 +5,39 @@ import zipfile
 import io
 import pandas as pd
 from google.protobuf.json_format import MessageToDict
+import gtfs_realtime_pb2
 
 
-# Testing
+
+
+#Testing
 # header = {'Authorization' : 'apikey ' + config.api_tok}
-# url = 'https://api.transport.nsw.gov.au/v1/gtfs/vehiclepos/buses?debug=true'
+# url = 'https://api.transport.nsw.gov.au/v1/gtfs/vehiclepos/buses' # can add debug=true 
 # data = requests.get(url, headers = header, verify=False)
+
+
+
+# Helper function for unpack dict
+def unpack_dict(item):
+    if isinstance(item, dict):
+        for key, value in item.items():
+            yield from unpack_dict(value)
+    else:
+        yield(item)
+
+#Function to unpack nested dictionary values
+# def unpack_dict(item, header_gen=False):
+#     if header_gen:
+#         headers = []
+#         unpacked_rows = list(unpack_helper(item, header_gen, headers))
+#         print(headers)
+#     else:
+#         unpacked_rows = list(unpack_helper(item))
+#     if header_gen:
+#         return(headers, unpacked_rows)
+#     else:
+#         return(unpacked_rows)
+
 
 
 class ImportData():
@@ -24,13 +51,13 @@ class ImportData():
             'zip' : ['https://api.transport.nsw.gov.au/v1/gtfs/schedule/buses']
             }
         self.realtime_urls = {
-            'protobuf': ['https://api.transport.nsw.gov.au/v1/gtfs/vehiclepos/buses?debug=true']
+            'protobuf': [['bus_pos','https://api.transport.nsw.gov.au/v1/gtfs/vehiclepos/buses']]
             }
     
     # Extract data
-    def get_data(self, type, url):
+    def get_data(self, urltype, url, name = None):
         header = {'Authorization' : 'apikey ' + self.api_key}
-        if type == 'zip':
+        if urltype == 'zip':
             data = requests.get(url, headers = header, verify = False, stream = True)
             # get zip files
             zfiles = zipfile.ZipFile(io.BytesIO(data.content))
@@ -41,8 +68,38 @@ class ImportData():
             
             return(dataframes)
         
-        elif type == 'protobuf':
-            pass
+        elif urltype == 'protobuf':
+            data = requests.get(url, headers = header, verify = False)
+
+            # Decode data
+            reader = gtfs_realtime_pb2.FeedMessage()
+            reader.ParseFromString(data.content)
+            # Convert to dict
+            data_dict = MessageToDict(reader)['entity']
+
+            # Unpack dictionary
+            rows = []
+            for i in range(0, len(data_dict)):
+                if i == 0:
+                    # Generate headers from first iteration
+                    headers = []
+                    def get_headers(item):
+                        if isinstance(item, dict):
+                            for key, value in item.items():
+                                if not isinstance(value, dict):
+                                    headers.append(key)
+                                yield from get_headers(value)
+                        else:
+                            yield(item)
+                        
+                    rows.append(list(get_headers(data_dict[0])))
+
+                else:
+                    rows.append(list(unpack_dict(data_dict[i])))
+            
+            df = pd.DataFrame(rows, columns=headers)
+            return({name:df})
+
 
     def tosql(self):
         pass
@@ -51,10 +108,14 @@ class ImportData():
         # To hold all dataframes from api content
         imported_dataframes = {}
         if self.extract_static:
-            for type, urls in self.static_urls.items():
+            for urltype, urls in self.static_urls.items():
                 for url in urls:
-                    imported_dataframes.update(self.get_data(type, url))
+                    imported_dataframes.update(self.get_data(urltype, url))
         
+        for urltype, urls in self.realtime_urls.items():
+            for url in urls:
+                imported_dataframes.update(self.get_data(urltype, url[1], url[0]))
+
         return(imported_dataframes)
 
         # INCORPORATE DATAFRAMES FROM PROTOBUF
@@ -66,10 +127,13 @@ class ImportData():
 
 if __name__ == '__main__':
     api_key = config.api_tok
-    importer = ImportData(api_key, True)
+    extract_static = False
+
+    importer = ImportData(api_key, extract_static)
 
     # Returning dataframes for now
     dfs = importer.import_all()
+    print(dfs['bus_pos'])
 
 
 
