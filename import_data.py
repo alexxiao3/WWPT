@@ -6,6 +6,7 @@ import io
 import pandas as pd
 from google.protobuf.json_format import MessageToDict
 import gtfs_realtime_pb2
+import sqlite3
 
 
 
@@ -53,6 +54,9 @@ class ImportData():
         self.realtime_urls = {
             'protobuf': [['bus_pos','https://api.transport.nsw.gov.au/v1/gtfs/vehiclepos/buses']]
             }
+        
+        # Sql database
+        self.db = 'TransportDB.sqlite'
     
     # Extract data
     def get_data(self, urltype, url, name = None):
@@ -98,11 +102,17 @@ class ImportData():
                     rows.append(list(unpack_dict(data_dict[i])))
             
             df = pd.DataFrame(rows, columns=headers)
+            # Df has repeating first column
+            df = df.iloc[:, 1:]
             return({name:df})
 
 
-    def tosql(self):
-        pass
+    def tosql(self, imported_dataframes):
+        conn = sqlite3.connect(self.db)
+        for name, df in imported_dataframes.items():
+            df.to_sql(name = name, con = conn, if_exists = 'replace')
+        conn.close()
+
 
     def import_all(self):
         # To hold all dataframes from api content
@@ -116,24 +126,19 @@ class ImportData():
             for url in urls:
                 imported_dataframes.update(self.get_data(urltype, url[1], url[0]))
 
-        return(imported_dataframes)
+        # Push to SQL
+        self.tosql(imported_dataframes)
 
-        # INCORPORATE DATAFRAMES FROM PROTOBUF
-
-
-        # CONVERT TO SQL
 
 
 
 if __name__ == '__main__':
     api_key = config.api_tok
-    extract_static = False
+    extract_static = True
 
     importer = ImportData(api_key, extract_static)
+    importer.import_all()
 
-    # Returning dataframes for now
-    dfs = importer.import_all()
-    print(dfs['bus_pos'])
 
 
 

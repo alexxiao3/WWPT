@@ -1,2 +1,3 @@
 # Ignore config 
 /config.py
+/TransportDB.sqlite
