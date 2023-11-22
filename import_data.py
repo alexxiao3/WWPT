@@ -19,25 +19,12 @@ import sqlite3
 
 
 # Helper function for unpack dict
-def unpack_dict(item):
-    if isinstance(item, dict):
-        for key, value in item.items():
-            yield from unpack_dict(value)
-    else:
-        yield(item)
-
-#Function to unpack nested dictionary values
-# def unpack_dict(item, header_gen=False):
-#     if header_gen:
-#         headers = []
-#         unpacked_rows = list(unpack_helper(item, header_gen, headers))
-#         print(headers)
+# def unpack_dict(item):
+#     if isinstance(item, dict):
+#         for key, value in item.items():
+#             yield from unpack_dict(value)
 #     else:
-#         unpacked_rows = list(unpack_helper(item))
-#     if header_gen:
-#         return(headers, unpacked_rows)
-#     else:
-#         return(unpacked_rows)
+#         yield(item)
 
 
 
@@ -52,7 +39,7 @@ class ImportData():
             'zip' : ['https://api.transport.nsw.gov.au/v1/gtfs/schedule/buses']
             }
         self.realtime_urls = {
-            'protobuf': [['bus_pos','https://api.transport.nsw.gov.au/v1/gtfs/vehiclepos/buses']]
+            'protobuf': [['bus_pos','https://api.transport.nsw.gov.au/v1/gtfs/realtime/buses']]
             }
         
         # Sql database
@@ -81,60 +68,43 @@ class ImportData():
             # Convert to dict
             data_dict = MessageToDict(reader)['entity']
 
-            # Unpack dictionary
-            rows = []
-            for i in range(0, len(data_dict)):
-                if i == 0:
-                    # Generate headers from first iteration
-                    headers = []
-                    def get_headers(item):
-                        if isinstance(item, dict):
-                            for key, value in item.items():
-                                if not isinstance(value, dict):
-                                    headers.append(key)
-                                yield from get_headers(value)
-                        else:
-                            yield(item)
-                        
-                    rows.append(list(get_headers(data_dict[0])))
-
-                else:
-                    rows.append(list(unpack_dict(data_dict[i])))
-            
-            df = pd.DataFrame(rows, columns=headers)
-            # Df has repeating first column
-            df = df.iloc[:, 1:]
-            return({name:df})
+            return({name:data_dict})
 
 
     def tosql(self, imported_dataframes):
         conn = sqlite3.connect(self.db)
+
+        # real time url names
+        realtime_names = []
+        for key, value in self.realtime_urls.items():
+            names = [x[0] for x in value]
+            realtime_names += names
+
         for name, df in imported_dataframes.items():
-            df.to_sql(name = name, con = conn, if_exists = 'replace')
+            if name not in  realtime_names: # don't save down live data
+                df.to_sql(name = name, con = conn, if_exists = 'replace')
         conn.close()
 
 
     def import_all(self):
         # To hold all dataframes from api content
-        imported_dataframes = {}
+        self.imported_dataframes = {}
         if self.extract_static:
             for urltype, urls in self.static_urls.items():
                 for url in urls:
-                    imported_dataframes.update(self.get_data(urltype, url))
+                    self.imported_dataframes.update(self.get_data(urltype, url))
         
         for urltype, urls in self.realtime_urls.items():
             for url in urls:
-                imported_dataframes.update(self.get_data(urltype, url[1], url[0]))
+                self.imported_dataframes.update(self.get_data(urltype, url[1], url[0]))
 
-        # Push to SQL
-        self.tosql(imported_dataframes)
-
-
+        # upload statics to sql
+        self.tosql(self.imported_dataframes)
 
 
 if __name__ == '__main__':
     api_key = config.api_tok
-    extract_static = True
+    extract_static = False
 
     importer = ImportData(api_key, extract_static)
     importer.import_all()
