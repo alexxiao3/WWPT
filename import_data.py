@@ -27,6 +27,17 @@ import sqlite3
 #         yield(item)
 
 
+def rewrite_file(file_path: str, msg: str):
+    '''Save Last Modified date of static tables from server
+    
+    Parameters:
+    file_path (str): Destination file path 
+    msg (str): Message to write into file
+
+    '''
+    with open(file_path, 'w') as writer:
+        writer.write(msg)
+
 
 class ImportData():
     def __init__(self, api_key, static = False):
@@ -44,20 +55,46 @@ class ImportData():
         
         # Sql database
         self.db = 'TransportDB.sqlite'
+        # This is a constant used to determine when the last save date 
+        # of modified is
+        self.lastmodified = 'lastmodified.txt'
     
     # Extract data
     def get_data(self, urltype, url, name = None):
         header = {'Authorization' : 'apikey ' + self.api_key}
         if urltype == 'zip':
-            data = requests.get(url, headers = header, verify = False, stream = True)
-            # get zip files
-            zfiles = zipfile.ZipFile(io.BytesIO(data.content))
+            data_head = requests.head(url, headers = header, verify = False)
+            # Check last save date
+            try: # if no last save file, then request
+                with open(self.lastmodified, 'r') as file:
+                    last_mod = file.read()
+                if last_mod != data_head.headers['Last-Modified']:
+                    data = requests.get(url, headers = header, verify = False, stream = True)
 
-            dataframes = {}
-            for name in zfiles.namelist():
-                dataframes[name.replace('.txt', '')] = pd.read_csv(zfiles.open(name))
-            
-            return(dataframes)
+                    # get zip files
+                    zfiles = zipfile.ZipFile(io.BytesIO(data.content))
+
+                    dataframes = {}
+                    for name in zfiles.namelist():
+                        dataframes[name.replace('.txt', '')] = pd.read_csv(zfiles.open(name))
+
+                    rewrite_file(self.lastmodified, data_head.headers['Last-Modified'])
+                    
+                    return(dataframes)
+            except: # also download
+                data = requests.get(url, headers = header, verify = False, stream = True)
+
+                # get zip files
+                zfiles = zipfile.ZipFile(io.BytesIO(data.content))
+
+                dataframes = {}
+                for name in zfiles.namelist():
+                    dataframes[name.replace('.txt', '')] = pd.read_csv(zfiles.open(name))
+                
+                rewrite_file(self.lastmodified, data.headers['Last-Modified'])
+
+                return(dataframes)
+                
         
         elif urltype == 'protobuf':
             data = requests.get(url, headers = header, verify = False)
@@ -66,7 +103,7 @@ class ImportData():
             reader = gtfs_realtime_pb2.FeedMessage()
             reader.ParseFromString(data.content)
             # Convert to dict
-            data_dict = MessageToDict(reader)['entity']
+            data_dict = MessageToDict(reader)
 
             return({name:data_dict})
 
