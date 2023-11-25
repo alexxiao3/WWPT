@@ -2,3 +2,4 @@
 /config.py
 /TransportDB.sqlite
 /lastmodified.txt
+.venv
