@@ -3,3 +3,4 @@
 /TransportDB.sqlite
 /lastmodified.txt
 .venv
+__pycache__/
