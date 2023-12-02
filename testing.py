@@ -65,4 +65,5 @@ unique_trip_ids, count = np.unique(stop_schedule['trip_id'], return_counts=True)
 keep_trip_ids = unique_trip_ids[count==2]
 stop_schedule = stop_schedule[np.isin(stop_schedule['trip_id'], keep_trip_ids)].reset_index(drop = True)
 
-
+# join on calendar
+stop_schedule = stop_schedule.merge(calendar_data, how = 'left', on = 'service_id')
