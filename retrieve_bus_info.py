@@ -15,6 +15,7 @@ class BusInformation():
         #self.trips['lookup'] = self.trips['route_id'] + self.trips['route_direction']
 
     def get_route_id(self, bus_number : str) -> list:
+        '''Get list of route ids given a bus number'''
         # possible for function to return multiple route ids
         return(self.routes['route_id'][self.routes['route_short_name'] == bus_number].values)
     
@@ -30,7 +31,7 @@ class BusInformation():
         route_ids = self.get_route_id(bus_number)
         trip_list = self.trips.loc[np.isin(self.trips['route_id'],route_ids) &
                                     (self.trips['route_direction']==route_direction)]
-        return(trip_list)
+        return(trip_list.reset_index(drop=True))
     
     
 
@@ -60,12 +61,14 @@ class BusRetriever(BusInformation):
     
     # Get bus schedule 
     def get_live_trips(self, trip_ids):
+        '''Return live trips for selected trip ids'''
         # Existing trips
         live_trips = self.bus_list.loc[np.isin(self.bus_list['tripId'], trip_ids)]
         
         if len(live_trips) == 0: # no live trips of inserted trip ids
             return(None)
         else:
+            live_trips = live_trips.reset_index(drop=True)
             return(live_trips)
         
 

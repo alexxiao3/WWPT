@@ -81,6 +81,8 @@ class ImportData():
                     rewrite_file(self.lastmodified, data_head.headers['Last-Modified'])
                     
                     return(dataframes)
+                else:
+                    return({})
             except: # also download
                 data = requests.get(url, headers = header, verify = False, stream = True)
 
@@ -141,7 +143,7 @@ class ImportData():
 
 if __name__ == '__main__':
     api_key = config.api_tok
-    extract_static = False
+    extract_static = True
 
     importer = ImportData(api_key, extract_static)
     importer.import_all()
