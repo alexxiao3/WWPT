@@ -37,9 +37,10 @@ class BusInformation():
     
     def get_stop_times(self, bus_number: str, route_direction:str):
         '''Get all stops of a selected bus number and route direction'''
-        trip_list = self.get_trip_list(bus_number, route_direction).astype(str)
+        trip_list = self.get_trip_list(bus_number, route_direction)
+        trip_list['trip_id'] = trip_list['trip_id'].astype(str)
         trip_query = ','.join(trip_list['trip_id'])
-        stop_times_data = pd.read_sql(f'select * from stop_times where trip_id in {trip_query}', self.engine)
+        stop_times_data = pd.read_sql(f'select * from stop_times where trip_id in ({trip_query})', self.engine)
         
         # merge on stop information
         stop_times_data = stop_times_data.merge(self.stops, how = 'left', on = 'stop_id')
