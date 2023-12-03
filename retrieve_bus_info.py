@@ -9,6 +9,8 @@ class BusInformation():
         self.engine = create_engine('sqlite:///TransportDB.sqlite')
         self.routes = pd.read_sql('select * from routes', self.engine)
         self.trips = pd.read_sql('select * from trips', self.engine)
+        self.calendar = pd.read_sql('select * from calendar', self.engine)
+        self.stops = pd.read_sql('select * from stops', self.engine)
 
         # Set up tables
         #self.routes['lookup'] = self.routes['route_short_name'] + self.routes['route_long_name']
@@ -24,8 +26,8 @@ class BusInformation():
         route_ids = self.get_route_id(bus_number)
         route_directions = self.trips.loc[np.isin(self.trips['route_id'], route_ids), 'route_direction']
         return(np.unique(route_directions))
-    
-    # This function may not be required
+
+
     def get_trip_list(self, bus_number: str, route_direction: str):
         '''Get list of trip IDs from a route number and direction.'''
         route_ids = self.get_route_id(bus_number)
@@ -33,6 +35,19 @@ class BusInformation():
                                     (self.trips['route_direction']==route_direction)]
         return(trip_list.reset_index(drop=True))
     
+    def get_stop_times(self, bus_number: str, route_direction:str):
+        '''Get all stops of a selected bus number and route direction'''
+        trip_list = self.get_trip_list(bus_number, route_direction).astype(str)
+        trip_query = ','.join(trip_list['trip_id'])
+        stop_times_data = pd.read_sql(f'select * from stop_times where trip_id in {trip_query}', self.engine)
+        stop_times_data['trip_id'] = stop_times_data['trip_id'].astype(str)
+        return(stop_times_data)
+    
+    def get_stop_schedule(self, bus_number: str, route_direction:str):
+        '''Get stop schedule of a given bus number and route direction'''
+        stop_times = self.get_stop_times(bus_number, route_direction)
+        stop_schedule = stop_times.merge(self.stops, how = 'left', on = 'stop_id')
+        return(stop_schedule)
     
 
 
