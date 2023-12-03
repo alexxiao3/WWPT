@@ -1,7 +1,26 @@
 # Used to return bus information
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from sqlalchemy import create_engine
+
+
+# Weekday converter constant
+WEEKDAY = {0:'monday', 1:'tuesday', 2:'wednesday', 3: 'thursday', 4:'friday', 5:'saturday', 6:'sunday',
+           -1:'sunday', 7:'monday'}
+
+# custom time function
+def to_time(time_str: str):
+    '''Change string to time object'''
+    try:
+        return(datetime.strptime(time_str, '%H:%M:%S').time())
+    except: # incorrect format when 24 hour time goes past 24 (next day)
+        hour = int(time_str[0:2])
+        hour -= 24
+        time_str = str(hour)+time_str[2:]
+        return(datetime.strptime(time_str, '%H:%M:%S').time())
+        
+
 
 class BusInformation():
     def __init__(self):
@@ -47,10 +66,104 @@ class BusInformation():
         stop_times_data['trip_id'] = stop_times_data['trip_id'].astype(str)
         return(stop_times_data)
     
+    def append_calendar_info(self, stop_schedule: pd.DataFrame):
+        '''Function to add operating days to a schedule'''
+        if 'service_id' in stop_schedule.columns:
+            stop_schedule = stop_schedule.merge(self.calendar, how = 'left', on = 'service_id')
+        else:
+            # add service id column on stop schedule 
+            stop_schedule['service_id'] = self.trips['service_id'][[list(self.trips['trip_id'].astype(str)).index(stop_schedule['trip_id'][i])
+                                                for i in range(len(stop_schedule))]].reset_index(drop = True)
+            stop_schedule = stop_schedule.merge(self.calendar, how = 'left', on = 'service_id')
+        return(stop_schedule)
+
     
-    def get_schedule_output(self, stop_schedule, to_stop, from_stop):
-        pass
-     
+    def prep_timetable(self, stop_schedule: pd.DataFrame):
+        '''Prep timetable for output calculation'''
+        # create flag for if departure time at from stop ticked over to next day
+        stop_schedule['next_day'] = [1 if int(stop_schedule['departure_time'][i][0:2])>=24 else 0
+                                     for i in range(len(stop_schedule))]
+        
+        # change departure time columns to time objects
+        stop_schedule[['departure_time', 'departure_time_dest']] = np.vectorize(to_time)(stop_schedule[['departure_time', 'departure_time_dest']])
+        
+        # order by departure time of from stop
+        stop_schedule = stop_schedule.sort_values('departure_time').reset_index(drop = True)
+        
+        return(stop_schedule)
+        
+    
+    def get_schedule_output(self, stop_times_data, to_stop, from_stop):
+        # only take rows that have the to and from stop
+        stop_schedule = stop_times_data[np.isin(stop_times_data['stop_name'], [to_stop, from_stop])].reset_index(drop = True)
+        
+        # filter for trips that have both stops
+        unique_trip_ids, count = np.unique(stop_schedule['trip_id'], return_counts=True)
+        keep_trip_ids = unique_trip_ids[count==2]
+        stop_schedule = stop_schedule[np.isin(stop_schedule['trip_id'], keep_trip_ids)].reset_index(drop = True)
+        
+        # change structure of stop_schedule have to and from stop information in one row
+        stop_info = ['trip_id', 'stop_id', 'stop_name', 'departure_time', 'stop_lat', 'stop_lon'] # required cols
+        stop_info_dest = [x + '_dest' for x in stop_info]
+
+        stop_schedule_final = stop_schedule[np.arange(len(stop_schedule))%2 == 0].reset_index(drop = True)
+        stop_schedule_final[stop_info_dest] = stop_schedule.loc[np.arange(len(stop_schedule))%2 == 1, stop_info].reset_index(drop = True)
+        
+        # add calendar data
+        stop_schedule_final = self.append_calendar_info(stop_schedule_final)
+        
+        self.prep_timetable(stop_schedule_final)
+        
+        return(stop_schedule_final)
+    
+
+        
+    def output_timetable(self, stop_schedule: pd.DataFrame):
+        '''Function that outputs timetable based on current time information'''
+        # wanted columns in output
+        output_cols = ['stop_name', 'departure_time', 'departure_time_dest', 'stop_name_dest', 'trip_id']
+        
+        # time information regarding now
+        time_now = datetime.now().time()
+        today = WEEKDAY[datetime.today().weekday()]
+        yesterday = WEEKDAY[datetime.today().weekday()-1]
+        tomorrow = WEEKDAY[datetime.today().weekday()-1]
+        
+        # segment 1: scheduled stops today past current time
+        segment1 = stop_schedule.loc[(stop_schedule['departure_time']>=time_now)&(stop_schedule[today]==1),
+                                     output_cols].reset_index(drop = True)
+        
+        # segment 2: scheduled stops yesterday with departure time past current time today 
+        segment2 = stop_schedule.loc[(stop_schedule['departure_time']>=time_now)&(stop_schedule[yesterday]==1)&
+                                 (stop_schedule['next_day'] == 1), 
+                                 output_cols].reset_index(drop = True)
+        
+        output_schedule = pd.concat([segment1, segment2], ignore_index=True)
+        output_schedule = output_schedule.sort_values('departure_time').reset_index(drop = True)
+        
+        # segment 3 is optional only if length of last 2 stops isn't past 20
+        if len(output_schedule) < 30: # want to output 30 buses
+            # this suggests that we are at the end of the day, so we need to output 2 types:
+            #       - bus scheduled tomorrow
+            #       - bus scheduled today that has departure time at the stop on the next day
+            segment3 = stop_schedule.loc[(stop_schedule[tomorrow]==1)| # first cond
+                                         ((stop_schedule[today]==1)&(stop_schedule['next_day']==1)), # second cond
+                                         output_cols].reset_index(drop = True) 
+
+            segment3 = segment3.sort_values('departure_time').reset_index(drop = True)
+            segment3 = segment3[0:(30-len(output_schedule))]
+            
+            # join on output_schedule
+            output_schedule = pd.concat([output_schedule, segment3], ignore_index=True)
+        else:
+            output_schedule = output_schedule[0:30]
+        
+        return(output_schedule)
+            
+        
+        
+        
+        
 
 
 
