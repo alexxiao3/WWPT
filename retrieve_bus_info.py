@@ -3,7 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from sqlalchemy import create_engine
-
+import time
+from datetime import timedelta
 
 # Weekday converter constant
 WEEKDAY = {0:'monday', 1:'tuesday', 2:'wednesday', 3: 'thursday', 4:'friday', 5:'saturday', 6:'sunday',
@@ -19,7 +20,12 @@ def to_time(time_str: str):
         hour -= 24
         time_str = str(hour)+time_str[2:]
         return(datetime.strptime(time_str, '%H:%M:%S').time())
-        
+
+def addtime(time_obj: time, delay: int):
+    '''Add delay to time object'''
+    old_date = datetime.strptime('2018-10-10' + ' ' +str(time_obj), '%Y-%m-%d %H:%M:%S')
+    new_date = old_date + timedelta(seconds = delay)
+    return(new_date.time())
 
 
 class BusInformation():
@@ -241,16 +247,49 @@ class BusRetriever(BusInformation):
         '''Update scheduled information with live transport information 
         if it exists
         '''
+        output_schedule = output_schedule.copy()
+        
         # get list of trip ids from output schedule (assuming unique here)
         trip_ids = np.unique(output_schedule['trip_id'])
         live_trips = self.get_live_trips(trip_ids)
 
-        # for live trips, update schedule information with that 
-        for trip_id in live_trips:
-            # get live bus data associated with trip id
-            bus_data = np.array(self.busdata)[self.bus_list['tripId'] == trip_id][0]
+        if live_trips is not None:
+            # for live trips, update schedule information with that 
+            for trip_id in live_trips['tripId']:
+                # get live bus data associated with trip id
+                bus_data = np.array(self.busdata)[self.bus_list['tripId'] == trip_id][0]
+                
+                # get from and to stop
+                from_stop_seq = output_schedule.loc[output_schedule['trip_id'] == trip_id, 'stop_sequence'].values[0]
+                to_stop_seq = output_schedule.loc[output_schedule['trip_id'] == trip_id, 'stop_sequence_dest'].values[0]
+                
+                # get delay times
+                # try:
+                from_delay, to_delay = self.unpack_live_schedule(bus_data, from_stop_seq, to_stop_seq)
+                output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time'] = \
+                    addtime(output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time'].values[0], from_delay)
+                output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time_dest'] = \
+                    addtime(output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time_dest'].values[0], to_delay)
+                
+                # update flag
+                early_late = 'early' if from_delay < 0 else 'late'
+                output_schedule.loc[output_schedule['trip_id']==trip_id,'Info_type'] = \
+                    f'{abs(round(from_delay/60))} minutes {early_late}'
+                
+                    
+                # except:
+                #     print(f'{trip_id} live data could not be updated.')
             
-
+            return(output_schedule)
+        else:
+            return(output_schedule)
+    
+    def output_live_schedule(self, stop_schedule: pd.DataFrame):
+        '''Outputs bus schedule with live data update'''
+        output_schedule = self.output_timetable(stop_schedule)
+        live_output_schedule = self.update_live_schedule(output_schedule)
+        
+        return(live_output_schedule)
             
         
 

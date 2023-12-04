@@ -76,8 +76,9 @@ retriever = BusRetriever(importer.imported_dataframes['bus_pos'])
 
 stop_times_data = retriever.get_stop_times(bus_no, route_dir)
 stop_schedule = retriever.get_schedule_output(stop_times_data, to_stop, from_stop)
+output_schedule = retriever.output_timetable(stop_schedule)
 
 # output schedule
-output_schedule = retriever.output_timetable(stop_schedule)
+live_output = retriever.output_live_schedule(stop_schedule)
 
 #1878422
