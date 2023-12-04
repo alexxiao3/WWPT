@@ -103,7 +103,7 @@ class BusInformation():
         stop_schedule = stop_schedule[np.isin(stop_schedule['trip_id'], keep_trip_ids)].reset_index(drop = True)
         
         # change structure of stop_schedule have to and from stop information in one row
-        stop_info = ['trip_id', 'stop_id', 'stop_name', 'departure_time', 'stop_lat', 'stop_lon'] # required cols
+        stop_info = ['trip_id', 'stop_id', 'stop_sequence', 'stop_name', 'departure_time', 'stop_lat', 'stop_lon'] # required cols
         stop_info_dest = [x + '_dest' for x in stop_info]
 
         stop_schedule_final = stop_schedule[np.arange(len(stop_schedule))%2 == 0].reset_index(drop = True)
@@ -121,7 +121,8 @@ class BusInformation():
     def output_timetable(self, stop_schedule: pd.DataFrame):
         '''Function that outputs timetable based on current time information'''
         # wanted columns in output
-        output_cols = ['stop_name', 'departure_time', 'departure_time_dest', 'stop_name_dest', 'trip_id']
+        output_cols = ['stop_name', 'departure_time', 'departure_time_dest', 'stop_name_dest', 'trip_id',
+                       'stop_sequence', 'stop_sequence_dest']
         
         # time information regarding now
         time_now = datetime.now().time()
@@ -158,6 +159,8 @@ class BusInformation():
         else:
             output_schedule = output_schedule[0:30]
         
+        output_schedule['Info_type'] = ['Scheduled']*len(output_schedule)
+
         return(output_schedule)
             
         
@@ -188,9 +191,11 @@ class BusRetriever(BusInformation):
                 self.bus_list = pd.DataFrame([data_dict])
             else:
                 self.bus_list = pd.concat([self.bus_list, pd.DataFrame([data_dict])])
+        
+        self.bus_list = self.bus_list.reset_index(drop = True)
     
     # Get bus schedule 
-    def get_live_trips(self, trip_ids):
+    def get_live_trips(self, trip_ids: list):
         '''Return live trips for selected trip ids'''
         # Existing trips
         live_trips = self.bus_list.loc[np.isin(self.bus_list['tripId'], trip_ids)]
@@ -200,6 +205,53 @@ class BusRetriever(BusInformation):
         else:
             live_trips = live_trips.reset_index(drop=True)
             return(live_trips)
+    
+
+    def unpack_live_schedule(self, bus_data: dict, from_stop_seq: int, 
+                             to_stop_seq: int):
+        '''Get live departure times at to and from stop sequence for given live bus'''
+        # Get list of sequences
+        stop_updates = bus_data['tripUpdate']['stopTimeUpdate']
+        stop_sequences = np.array([stop_updates[i]['stopSequence'] for i in 
+                                   range(len(stop_updates))])
+
+        if from_stop_seq in stop_sequences and to_stop_seq in stop_sequences:
+            # Get time of departure at the from and to stop 
+            # from stop:
+            from_stop = np.array(stop_updates)[stop_sequences==from_stop_seq][0]
+            if from_stop['scheduleRelationship'] == 'SCHEDULED':
+                from_delay = from_stop['departure']['delay']
+            else:
+                return() # no schedule
+
+            # to stop:
+            to_stop = np.array(stop_updates)[stop_sequences==to_stop_seq][0]
+            if to_stop['scheduleRelationship'] == 'SCHEDULED':
+                to_delay = to_stop['departure']['delay']
+            else:
+                return() # no schedule
+            
+            return(from_delay, to_delay)
+
+        else:
+            return() # live trip doesn't stop at required stops
+
+
+    def update_live_schedule(self, output_schedule: pd.DataFrame):
+        '''Update scheduled information with live transport information 
+        if it exists
+        '''
+        # get list of trip ids from output schedule (assuming unique here)
+        trip_ids = np.unique(output_schedule['trip_id'])
+        live_trips = self.get_live_trips(trip_ids)
+
+        # for live trips, update schedule information with that 
+        for trip_id in live_trips:
+            # get live bus data associated with trip id
+            bus_data = np.array(self.busdata)[self.bus_list['tripId'] == trip_id][0]
+            
+
+            
         
 
 if __name__ == '__main__':
