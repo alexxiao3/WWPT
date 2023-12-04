@@ -134,7 +134,7 @@ class BusInformation():
         time_now = datetime.now().time()
         today = WEEKDAY[datetime.today().weekday()]
         yesterday = WEEKDAY[datetime.today().weekday()-1]
-        tomorrow = WEEKDAY[datetime.today().weekday()-1]
+        tomorrow = WEEKDAY[datetime.today().weekday()+1]
         
         # segment 1: scheduled stops today past current time
         segment1 = stop_schedule.loc[(stop_schedule['departure_time']>=time_now)&(stop_schedule[today]==1),
@@ -264,21 +264,21 @@ class BusRetriever(BusInformation):
                 to_stop_seq = output_schedule.loc[output_schedule['trip_id'] == trip_id, 'stop_sequence_dest'].values[0]
                 
                 # get delay times
-                # try:
-                from_delay, to_delay = self.unpack_live_schedule(bus_data, from_stop_seq, to_stop_seq)
-                output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time'] = \
-                    addtime(output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time'].values[0], from_delay)
-                output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time_dest'] = \
-                    addtime(output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time_dest'].values[0], to_delay)
-                
-                # update flag
-                early_late = 'early' if from_delay < 0 else 'late'
-                output_schedule.loc[output_schedule['trip_id']==trip_id,'Info_type'] = \
-                    f'{abs(round(from_delay/60))} minutes {early_late}'
+                try:
+                    from_delay, to_delay = self.unpack_live_schedule(bus_data, from_stop_seq, to_stop_seq)
+                    output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time'] = \
+                        addtime(output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time'].values[0], from_delay)
+                    output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time_dest'] = \
+                        addtime(output_schedule.loc[output_schedule['trip_id']==trip_id, 'departure_time_dest'].values[0], to_delay)
+                    
+                    # update flag
+                    early_late = 'early' if from_delay < 0 else 'late'
+                    output_schedule.loc[output_schedule['trip_id']==trip_id,'Info_type'] = \
+                        f'{abs(round(from_delay/60))} minutes {early_late}'
                 
                     
-                # except:
-                #     print(f'{trip_id} live data could not be updated.')
+                except:
+                    print(f'{trip_id} live data could not be updated.')
             
             return(output_schedule)
         else:
