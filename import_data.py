@@ -8,6 +8,7 @@ from google.protobuf.json_format import MessageToDict
 import gtfs_realtime_pb2
 import sqlite3
 
+import logger
 
 
 
@@ -128,17 +129,29 @@ class ImportData():
     def import_all(self):
         # To hold all dataframes from api content
         self.imported_dataframes = {}
+        
+        logger.log_info('Starting extraction of static data...')
         if self.extract_static:
             for urltype, urls in self.static_urls.items():
                 for url in urls:
                     self.imported_dataframes.update(self.get_data(urltype, url))
         
+        logger.log_info('Starting extraction of live data...')
         for urltype, urls in self.realtime_urls.items():
             for url in urls:
                 self.imported_dataframes.update(self.get_data(urltype, url[1], url[0]))
 
         # upload statics to sql
         self.tosql(self.imported_dataframes)
+    
+    def refresh_live_data(self):
+        '''Update live data'''
+        for urltype, urls in self.realtime_urls.items():
+            for url in urls:
+                new_data = self.get_data(urltype, url[1], url[0])[url[0]]
+                if new_data['header']['timestamp'] != \
+                    self.imported_dataframes['bus_pos']['header']['timestamp']:
+                    self.imported_dataframes.update({url[0]:new_data})
 
 
 if __name__ == '__main__':

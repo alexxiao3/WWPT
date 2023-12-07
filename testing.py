@@ -10,6 +10,8 @@ from import_data import ImportData
 from retrieve_bus_info import BusRetriever
 import config
 
+import plotly.express as px
+
 
 # sql engine
 engine = create_engine("sqlite:///TransportDB.sqlite")
@@ -29,50 +31,6 @@ to_stop = 'Parramatta Station, Stand B3'
 
 retriever = BusRetriever(importer.imported_dataframes['bus_pos'])
 
-# Get associated trip list 
-# trip_list = retriever.get_trip_list(bus_no, route_dir).astype(str)
-# live_trips = retriever.get_live_trips(trip_list['trip_id'])
-
-
-# # trip list is used to get scheduled information
-# # live trips used to get live information to replace scheduled
-
-
-# # read in stop times data
-# query = ','.join(trip_list['trip_id'])
-
-# # import stop times data
-# stop_times_data = pd.read_sql(f'select * from stop_times where trip_id in ({query})', engine)
-# stop_times_data['trip_id'] = stop_times_data['trip_id'].astype(str)
-
-# # get individual stop data
-# stop_data = pd.read_sql('select * from stops', engine)
-# stop_times_data = stop_times_data.merge(stop_data, how = 'left', on = 'stop_id')
-
-
-# # filter stop time data for required stops
-# stop_times_data = stop_times_data[np.isin(stop_times_data['stop_name'], [from_stop, to_stop])].reset_index(drop = True)
-
-# # only include trips with both from and to stops
-# unique_trip_ids, count = np.unique(stop_times_data['trip_id'], return_counts=True)
-# keep_trip_ids = unique_trip_ids[count==2]
-# stop_times_data = stop_times_data[np.isin(stop_times_data['trip_id'], keep_trip_ids)].reset_index(drop = True)
-
-
-# stop_info = ['trip_id', 'stop_id', 'stop_name', 'departure_time', 'stop_lat', 'stop_lon']
-# stop_info_dest = [x + '_dest' for x in stop_info]
-
-# stop_schedule = stop_times_data[np.arange(len(stop_times_data))%2 == 0].reset_index(drop=True)
-# stop_schedule[stop_info_dest] = stop_times_data.loc[np.arange(len(stop_times_data))%2==1, stop_info].reset_index(drop = True)
-
-# # add service id
-# stop_schedule['service_id'] = trip_list['service_id'][[list(trip_list['trip_id']).index(stop_schedule['trip_id'][i])
-#                                                         for i in range(len(stop_schedule))]].reset_index(drop = True)
-
-# # join on calendar
-# stop_schedule = stop_schedule.merge(calendar_data, how = 'left', on = 'service_id')
-
-
 
 stop_times_data = retriever.get_stop_times(bus_no, route_dir)
 stop_schedule = retriever.get_schedule_output(stop_times_data, to_stop, from_stop)
@@ -81,4 +39,15 @@ output_schedule = retriever.output_timetable(stop_schedule)
 # output schedule
 live_output = retriever.output_live_schedule(stop_schedule)
 
+# refresh
+importer.refresh_live_data()
+retriever.refresh_live_data(importer.imported_dataframes['bus_pos'])
+live_output_refreshed = retriever.output_live_schedule(stop_schedule)
+
 #1878422
+
+
+# PLOTLY 
+px.set_mapbox_access_token(config.mapbox_tok)
+df = stop_times_data.drop_duplicates('stop_name').sort_values('stop_sequence').reset_index(drop=True)
+fig = px.scatter_mapbox(df, lat = 'stop_lat', lon = 'stop_lon', hover_name = 'stop_name')

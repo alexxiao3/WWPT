@@ -6,6 +6,8 @@ from sqlalchemy import create_engine
 import time
 from datetime import timedelta
 
+import logger
+
 # Weekday converter constant
 WEEKDAY = {0:'monday', 1:'tuesday', 2:'wednesday', 3: 'thursday', 4:'friday', 5:'saturday', 6:'sunday',
            -1:'sunday', 7:'monday'}
@@ -135,7 +137,7 @@ class BusInformation():
         today = WEEKDAY[datetime.today().weekday()]
         yesterday = WEEKDAY[datetime.today().weekday()-1]
         tomorrow = WEEKDAY[datetime.today().weekday()+1]
-        
+
         # segment 1: scheduled stops today past current time
         segment1 = stop_schedule.loc[(stop_schedule['departure_time']>=time_now)&(stop_schedule[today]==1),
                                      output_cols].reset_index(drop = True)
@@ -183,6 +185,11 @@ class BusRetriever(BusInformation):
         self.busdata = busdata['entity']
         
         # get bus list 
+        self.bus_directory()
+
+    def refresh_live_data(self, busdata: pd.DataFrame):
+        '''Refresh live data used by the class'''
+        self.busdata = busdata['entity']
         self.bus_directory()
 
     # not intended to be user function
@@ -255,7 +262,9 @@ class BusRetriever(BusInformation):
 
         if live_trips is not None:
             # for live trips, update schedule information with that 
-            for trip_id in live_trips['tripId']:
+            for row in live_trips.itertuples():
+                trip_id = row.tripId
+
                 # get live bus data associated with trip id
                 bus_data = np.array(self.busdata)[self.bus_list['tripId'] == trip_id][0]
                 
@@ -278,7 +287,9 @@ class BusRetriever(BusInformation):
                 
                     
                 except:
-                    print(f'{trip_id} live data could not be updated.')
+                    if row.scheduleRelationship == 'CANCELED':
+                        output_schedule.loc[output_schedule['trip_id']==trip_id, 'Info_type'] = \
+                        'CANCELLED'
             
             return(output_schedule)
         else:
